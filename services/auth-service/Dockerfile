@@ -15,17 +15,39 @@
 #   - Done when: `docker scout` / `trivy image` shows no HIGH/CRITICAL you introduced,
 #     the image runs as UID != 0, and final image size is a fraction of this one.
 # -----------------------------------------------------------------------------
-FROM node:20
+# =============================================================================
+# Stage 1: Builder Stage (Build environment & dependencies)
+# =============================================================================
+# Pinning base image by digest for 100% reproducibility and security
+FROM node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS builder
 
 WORKDIR /app
 
-# Naive: copies package.json and installs ALL deps (incl. dev) as root.
-COPY package.json ./
-RUN npm install
+# Copy package configurations first to leverage Docker layer caching
+COPY package*.json ./
 
+# Install strictly production dependencies to reduce image size and attack surface
+RUN npm ci --omit=dev
+
+# Copy the application source code
 COPY . .
+
+# =============================================================================
+# Stage 2: Runtime / Production Stage (Secure execution environment)
+# =============================================================================
+# Use the exact same pinned image digest
+FROM node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
+
+WORKDIR /app
+
+# Copy files from builder stage and immediately assign ownership to the built-in 'node' user
+COPY --from=builder --chown=node:node /app/package.json ./
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/src ./src
+
+# Switch to the built-in non-root user (UID 1000) for security
+USER node
 
 EXPOSE 3001
 
-# Naive: no init process, no signal handling tuning, runs as root.
 CMD ["npm", "start"]

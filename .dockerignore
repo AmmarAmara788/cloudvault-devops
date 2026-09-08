@@ -1,0 +1,24 @@
+# Ignore local dependencies and debug logs to avoid conflicts with container environment
+node_modules/
+npm-debug.log
+
+# Ignore version control directories and files
+.git/
+.gitignore
+
+# Ignore environment variables and secrets (CRITICAL FOR SECURITY!)
+.env
+*.env
+.env.*
+
+# Ignore Docker and Compose configuration files
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Ignore documentation, challenge files, and infrastructure code
+README.md
+CHALLENGE.md
+docs/
+terraform/
+k8s/

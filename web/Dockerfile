@@ -10,10 +10,34 @@
 #   - Done when: the final image serves prebuilt static assets and is a fraction
 #     of this image's size.
 # =============================================================================
-FROM node:20
+# =============================================================================
+# Stage 1: Build Stage (Build Vite/React static assets)
+# =============================================================================
+FROM node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS builder
+
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+
+# Copy dependency specifications
+COPY package*.json ./
+
+# Install all dependencies (including devDependencies needed for build)
+RUN  npm ci --legacy-peer-deps
+
+# Copy source code
 COPY . .
-EXPOSE 5173
-CMD ["npm", "run", "dev"]
+
+# Build static production assets
+RUN npm run build
+
+# =============================================================================
+# Stage 2: Runtime Stage (Serve static files using Nginx)
+# =============================================================================
+FROM nginx:1.25-alpine
+
+# Copy built assets from builder stage to Nginx public directory
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Expose web port
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
