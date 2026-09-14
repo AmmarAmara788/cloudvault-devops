@@ -1,23 +1,50 @@
-# =============================================================================
-# 🧩 terraform/main.tf — ROOT MODULE SKELETON (your graded work).
-# =============================================================================
-# There are NO working resources in this directory on purpose. Your job is to
-# design and implement the AWS architecture described in
-# docs/ARCHITECTURE_CHALLENGE.md, wiring the modules below together.
-#
-# TODO(student): compose the modules. A sketch of the intended wiring:
-#
-#   module "network" { source = "./modules/network"  ...inputs... }
-#   module "iam"     { source = "./modules/iam"      ...inputs... }
-#   module "storage" { source = "./modules/storage"  ...inputs... }
-#   module "compute" { source = "./modules/compute"  ...inputs... }
-#
-# HINTS (do not turn these into copied answers):
-#   - What is the dependency order between these modules? What must exist before
-#     compute can launch (subnets? security groups? an instance profile?)
-#   - Keep the ROOT module thin: it wires modules + passes variables. Real
-#     resources live inside the modules.
-#   - Cost guardrail: everything here must fit AWS Free Tier OR be validated
-#     against LocalStack. Do NOT introduce Amazon EKS — its control plane is not
-#     free. Use kind/k3d locally for the Kubernetes milestone instead.
-# =============================================================================
+provider "aws" {
+  region                      = var.aws_region
+  access_key                  = "mock_key"
+  secret_key                  = "mock_secret"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+  
+  s3_use_path_style           = true
+
+  endpoints {
+    ec2         = "http://localhost:4566"
+    s3          = "http://localhost:4566"
+    iam         = "http://localhost:4566"
+    sts         = "http://localhost:4566"
+    autoscaling = "http://localhost:4566"
+    elb         = "http://localhost:4566"
+    elbv2       = "http://localhost:4566"
+  }
+}
+
+# 1. Network Module
+module "network" {
+  source      = "./modules/network"
+  environment = var.environment
+  vpc_cidr    = var.vpc_cidr
+}
+
+# 2. Storage Module
+module "storage" {
+  source      = "./modules/storage"
+  environment = var.environment
+}
+
+# 3. IAM Module
+module "iam" {
+  source             = "./modules/iam"
+  environment        = var.environment
+  storage_bucket_arn = module.storage.bucket_arn
+}
+
+# 4. Compute Module
+module "compute" {
+  source                    = "./modules/compute"
+  environment               = var.environment
+  vpc_id                    = module.network.vpc_id
+  public_subnet_ids         = module.network.public_subnet_ids
+  app_subnet_ids            = module.network.app_subnet_ids
+  app_instance_profile_name = module.iam.app_instance_profile_name
+}
