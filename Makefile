@@ -53,3 +53,22 @@ clean: ## Remove build artifacts and node_modules
 
 rebuild: ## No-cache rebuild of all images
 	$(COMPOSE) build --no-cache
+
+db-backup:
+	@./scripts/backup.sh
+
+db-restore:
+	@if [ -z "$(db)" ]; then \
+		echo "Usage: make db-restore db=<authdb|filesdb|notifdb>"; \
+		exit 1; \
+	fi
+	@./scripts/restore.sh $(db) latest --force
+
+db-clean-archives:
+	@./scripts/clean-archives.sh
+
+db-list-backups:
+	@./scripts/list-backups.sh
+
+health:
+	@./scripts/health-check.sh

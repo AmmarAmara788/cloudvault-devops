@@ -1,23 +1,81 @@
-# =============================================================================
-# 🧩 modules/compute — where the services run + the security groups. TODO(student).
-# =============================================================================
-# QUESTIONS TO ANSWER IN CODE:
-#   - You have FOUR security groups to design (e.g. load balancer, gateway/app,
-#     services, data). Which of them should reference ANOTHER security group as
-#     its source instead of a CIDR block — and why is SG-to-SG safer than a CIDR?
-#   - The gateway is the only public entry point. What sits IN FRONT of it, in
-#     which subnet, listening on 80/443? What does it forward to?
-#   - Where do compute nodes live — public or private subnets? Why?
-#   - How do nodes get an identity to call AWS APIs WITHOUT long-lived keys?
-#     (coordinate with modules/iam)
-#
-# COST GUARDRAIL: fit Free Tier (e.g. small instances) or validate against
-# LocalStack. Do NOT use Amazon EKS. For the Kubernetes milestone use kind/k3d.
-#
-# ACCEPTANCE CRITERIA:
-#   done when: the security-group matrix (source -> dest -> port -> reason) is
-#   documented AND implemented; nothing in the data tier is reachable from the
-#   internet; only the front-facing component exposes 80/443.
-#
-# TODO(student): implement the load balancer, compute (ASG/instances or node group
-# for a self-managed cluster), and the four security groups here.
+# ==========================================
+# 1. Security Groups (The Matrix) - مدعومة مجاناً
+# ==========================================
+
+resource "aws_security_group" "lb_sg" {
+  name   = "cloudvault-lb-sg-${var.environment}"
+  vpc_id = var.vpc_id
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "app_sg" {
+  name   = "cloudvault-app-sg-${var.environment}"
+  vpc_id = var.vpc_id
+  ingress {
+    description     = "Allow traffic ONLY from Load Balancer SG"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lb_sg.id] 
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "services_sg" {
+  name   = "cloudvault-services-sg-${var.environment}"
+  vpc_id = var.vpc_id
+  ingress {
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app_sg.id]
+  }
+}
+
+resource "aws_security_group" "data_sg" {
+  name   = "cloudvault-data-sg-${var.environment}"
+  vpc_id = var.vpc_id
+  ingress {
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.services_sg.id]
+  }
+}
+
+# ==========================================
+# 2. Compute Instance (Direct EC2 instead of ASG) - مدعوم مجاناً
+# ==========================================
+resource "aws_instance" "app_server" {
+  ami           = "ami-df5de72bdb3b" # Mock AMI
+  instance_type = "t2.micro"
+  
+  # نزرع السيرفر في أول شبكة خاصة
+  subnet_id = var.app_subnet_ids[0]
+
+  # نربط السيرفر بهوية الـ IAM
+  iam_instance_profile = var.app_instance_profile_name
+  
+  # نربط السيرفر بصلاحيات الجدار الناري
+  vpc_security_group_ids = [aws_security_group.app_sg.id]
+
+  tags = {
+    Name = "cloudvault-app-server-${var.environment}"
+  }
+}
