@@ -13,31 +13,33 @@
 # =============================================================================
 # Stage 1: Build Stage (Build Vite/React static assets)
 # =============================================================================
-FROM node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
 
 WORKDIR /app
 
-# Copy dependency specifications
 COPY package*.json ./
+RUN npm ci --legacy-peer-deps
 
-# Install all dependencies (including devDependencies needed for build)
-RUN  npm ci --legacy-peer-deps
-
-# Copy source code
 COPY . .
-
-# Build static production assets
 RUN npm run build
 
 # =============================================================================
-# Stage 2: Runtime Stage (Serve static files using Nginx)
+# Stage 2: Runtime Stage (Serve static files using secured Nginx)
 # =============================================================================
-FROM nginx:1.25-alpine
+FROM nginx:alpine@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3
 
-# Copy built assets from builder stage to Nginx public directory
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Hardening: Upgrade OS packages and configure Nginx to run as non-root
+RUN apk upgrade --no-cache \
+    && sed -i 's/listen  *80;/listen 8080;/g' /etc/nginx/conf.d/default.conf \
+    && chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/log/nginx /etc/nginx/conf.d \
+    && touch /var/run/nginx.pid \
+    && chown -R nginx:nginx /var/run/nginx.pid
 
-# Expose web port
-EXPOSE 80
+COPY --from=builder --chown=nginx:nginx /app/dist /usr/share/nginx/html
+
+# Switch to standard non-root user
+USER nginx
+
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]
