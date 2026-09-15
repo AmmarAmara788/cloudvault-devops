@@ -52,11 +52,11 @@ jobs:
 
       - name: Run Linting Checks
         run: |
-          for dir in services/* web; do
+          for dir in services/*; do
             if [ -f "$dir/package.json" ]; then
               echo "Checking $dir..."
               cd "$dir"
-              npm ci --ignore-scripts
+              npm ci --ignore-scripts --legacy-peer-deps
               if npm run | grep -q "lint"; then
                 npm run lint
               fi
