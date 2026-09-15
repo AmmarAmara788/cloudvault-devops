@@ -19,35 +19,37 @@
 # Stage 1: Builder Stage (Build environment & dependencies)
 # =============================================================================
 # Pinning base image by digest for 100% reproducibility and security
-FROM node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS builder
+# Multi-stage build pinned by strict digest for security and reproducibility
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
 
 WORKDIR /app
 
-# Copy package configurations first to leverage Docker layer caching
 COPY package*.json ./
-
-# Install strictly production dependencies to reduce image size and attack surface
 RUN npm ci --omit=dev
 
-# Copy the application source code
 COPY . .
 
 # =============================================================================
 # Stage 2: Runtime / Production Stage (Secure execution environment)
 # =============================================================================
 # Use the exact same pinned image digest
-FROM node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
+# Production runtime stage
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 WORKDIR /app
 
-# Copy files from builder stage and immediately assign ownership to the built-in 'node' user
+# Security Hardening: Upgrade OS packages and completely remove npm to eliminate its vulnerabilities
+RUN apk upgrade --no-cache \
+    && rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm \
+    && rm -f /usr/local/bin/npx
+
 COPY --from=builder --chown=node:node /app/package.json ./
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/src ./src
 
-# Switch to the built-in non-root user (UID 1000) for security
 USER node
 
 EXPOSE 3001
 
-CMD ["npm", "start"]
+CMD ["node", "src/index.js"]
